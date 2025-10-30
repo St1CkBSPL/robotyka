@@ -1,0 +1,66 @@
+	//Robot jedzie po linii zewnątrz
+		/*
+		NXT::Sensor::SetColor(&comm, IN_2, 'n');
+		do {
+			color = NXT::Sensor::GetValue(&comm, IN_2);
+			NXT::Motor::SetForward(&comm, OUT_C, x);
+			NXT::Motor::SetForward(&comm, OUT_B, x);
+			
+			if (color > 30) {
+				NXT::Motor::SetReverse(&comm, OUT_B, y);
+				NXT::Motor::SetForward(&comm, OUT_C, y);
+			}
+			if (kbhit() == true)
+			{
+
+				decyzja = getch();
+				if (decyzja == 'P' || decyzja == 'p')
+				{
+					NXT::Motor::Stop(&comm, OUT_B, 0);
+					NXT::Motor::Stop(&comm, OUT_C, 0);
+					NXT::Motor::Stop(&comm, OUT_A, 0);
+					NXT::Sensor::SetSonarOff(&comm, IN_3);
+					NXT::Sensor::SetColorOff(&comm, IN_2);
+
+					break;
+				}
+				continue;
+
+			}
+		} while (decyzja != 'p' && decyzja != 'P');
+
+		*/
+
+		//Robot jedzie po węwnątrz
+		/*
+
+		NXT::Sensor::SetColor(&comm, IN_2, 'n');
+		do {
+			color = NXT::Sensor::GetValue(&comm, IN_2);
+			NXT::Motor::SetForward(&comm, OUT_C, x);
+			NXT::Motor::SetForward(&comm, OUT_B, x);
+
+			if (color < 30) {
+				NXT::Motor::SetReverse(&comm, OUT_B, y);
+				NXT::Motor::SetForward(&comm, OUT_C, y);
+			}
+			if (kbhit() == true)
+			{
+
+				decyzja = getch();
+				if (decyzja == 'P' || decyzja == 'p')
+				{
+					NXT::Motor::Stop(&comm, OUT_B, 0);
+					NXT::Motor::Stop(&comm, OUT_C, 0);
+					NXT::Motor::Stop(&comm, OUT_A, 0);
+					NXT::Sensor::SetSonarOff(&comm, IN_3);
+					NXT::Sensor::SetColorOff(&comm, IN_2);
+
+					break;
+				}
+				continue;
+
+			}
+		} while (decyzja != 'p' && decyzja != 'P');
+
+		*/
