@@ -1,0 +1,49 @@
+	//sumo	
+
+		NXT::Sensor::SetColor(&comm, IN_2, 'n');
+		NXT::Sensor::SetSonar(&comm, IN_3);
+		NXT::Motor::SetForward(&comm, OUT_C, x);
+		NXT::Motor::SetForward(&comm, OUT_B, x);
+		do {
+			color = NXT::Sensor::GetValue(&comm, IN_2);
+			Wait(50);
+			if (color > 30) {
+				NXT::Motor::SetReverse(&comm, OUT_B, y);
+				NXT::Motor::SetForward(&comm, OUT_C, y);
+			do
+			{
+				odleglosc = NXT::Sensor::GetSonarValue(&comm, IN_3);
+			} while (odleglosc > 70);
+			NXT::Motor::SetForward(&comm, OUT_B, x);
+			NXT::Motor::SetForward(&comm, OUT_C, x);
+			do
+			{
+				odleglosc = NXT::Sensor::GetSonarValue(&comm, IN_3);
+				color = NXT::Sensor::GetValue(&comm, IN_2);
+				Wait(50);
+			} while (odleglosc < 70 && color > 30);
+			}
+
+			else 
+			{
+				NXT::Motor::SetReverse(&comm, OUT_B, y);
+				NXT::Motor::SetForward(&comm, OUT_C, y);
+			}
+			if (kbhit() == true)
+			{
+
+				decyzja = getch();
+				if (decyzja == 'P' || decyzja == 'p')
+				{
+					NXT::Motor::Stop(&comm, OUT_B, 0);
+					NXT::Motor::Stop(&comm, OUT_C, 0);
+					NXT::Motor::Stop(&comm, OUT_A, 0);
+					NXT::Sensor::SetSonarOff(&comm, IN_3);
+					NXT::Sensor::SetColorOff(&comm, IN_2);
+
+					break;
+				}
+				continue;
+
+			}
+		} while (decyzja != 'p' && decyzja != 'P');
