@@ -1,0 +1,213 @@
+import pygame
+import random
+import math
+from queue import PriorityQueue
+
+WIDTH, HEIGHT = 800, 600
+grid_size = 40
+cols, rows = WIDTH // grid_size, HEIGHT // grid_size
+
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GRAY = (100, 100, 100)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+YELLOW = (255, 255, 0)
+
+pygame.init()
+win = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("A* Racing Game")
+font = pygame.font.SysFont(None, 48)
+clock = pygame.time.Clock()
+
+
+def heuristic(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+
+def get_neighbors(node):
+    x, y = node
+    neighbors = []
+    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        nx, ny = x + dx, y + dy
+        if 0 <= nx < cols and 0 <= ny < rows and grid[ny][nx] == 0:
+            neighbors.append((nx, ny))
+    return neighbors
+
+
+def a_star(start, goal):
+    open_set = PriorityQueue()
+    open_set.put((0, start))
+    came_from = {}
+    g_score = {start: 0}
+
+    while not open_set.empty():
+        _, current = open_set.get()
+        if current == goal:
+            path = []
+            while current in came_from:
+                path.append(current)
+                current = came_from[current]
+            path.reverse()
+            return path
+
+        for neighbor in get_neighbors(current):
+            tentative_g = g_score[current] + 1
+            if neighbor not in g_score or tentative_g < g_score[neighbor]:
+                came_from[neighbor] = current
+                g_score[neighbor] = tentative_g
+                f_score = tentative_g + heuristic(neighbor, goal)
+                open_set.put((f_score, neighbor))
+    return []
+
+
+
+class Car:
+    # Poprawiona nazwa konstruktora z 'init' na '__init__'
+    def __init__(self, x, y, color, is_player=False):
+        self.x = x
+        self.y = y
+        self.color = color
+        self.speed = 2
+        self.is_player = is_player
+        self.path = []
+
+    def update(self):
+        if self.is_player:
+            keys = pygame.key.get_pressed()
+            dx = dy = 0
+            if keys[pygame.K_w]:
+                dy -= self.speed
+            if keys[pygame.K_s]:
+                dy += self.speed
+            if keys[pygame.K_a]:
+                dx -= self.speed
+            if keys[pygame.K_d]:
+                dx += self.speed
+
+            new_x = self.x + dx
+            new_y = self.y + dy
+
+            if not collide_with_walls(new_x, new_y):
+                self.x = new_x
+                self.y = new_y
+        else:
+            if self.path:
+                tx, ty = self.path[0]
+                tx, ty = tx * grid_size + grid_size // 2, ty * grid_size + grid_size // 2
+                dx, dy = tx - self.x, ty - self.y
+                dist = math.hypot(dx, dy)
+                if dist > 2:
+                    self.x += dx / dist * 2
+                    self.y += dy / dist * 2
+                else:
+                    self.path.pop(0)
+
+    def draw(self):
+        pygame.draw.rect(win, self.color, (self.x - 8, self.y - 8, 16, 16))
+
+
+def collide_with_walls(x, y):
+    if x < 0 or x > WIDTH or y < 0 or y > HEIGHT:
+        return True
+    grid_x, grid_y = int(x // grid_size), int(y // grid_size)
+    # Dodatkowe sprawdzenie, czy indeksy są w zakresie siatki
+    if 0 <= grid_x < cols and 0 <= grid_y < rows:
+        return grid[grid_y][grid_x] == 1
+    return True  # Poza zakresem to też kolizja
+
+
+
+def generate_map():
+    g = [[0 for _ in range(cols)] for _ in range(rows)]
+    for y in range(rows):
+        for x in range(cols):
+            if random.random() < 0.2:
+                g[y][x] = 1
+    return g
+
+
+def random_free_cell():
+    while True:
+        x, y = random.randint(0, cols - 1), random.randint(0, rows - 1)
+        if grid[y][x] == 0:
+            return (x, y)
+
+
+
+
+def reset_game():
+    global grid, player, bots, goal, game_over, message
+    grid = generate_map()
+    start = random_free_cell()
+    goal = random_free_cell()
+
+    # Upewnij się, że start i meta nie są tym samym
+    while start == goal:
+        goal = random_free_cell()
+
+    sx, sy = start[0] * grid_size + grid_size // 2, start[1] * grid_size + grid_size // 2
+    player = Car(sx, sy, BLUE, True)
+    bots = [Car(sx, sy, RED) for _ in range(3)]
+
+    for bot in bots:
+        bot.path = a_star(start, goal)
+
+    game_over = False
+    message = ""
+    return start, goal
+
+
+start, goal = reset_game()
+
+running = True
+while running:
+    clock.tick(30)
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE and game_over:
+                start, goal = reset_game()
+
+    if not game_over:
+        player.update()
+        for bot in bots:
+            bot.update()
+
+        # Sprawdzenie końca gry
+        goal_x, goal_y = goal[0] * grid_size + grid_size // 2, goal[1] * grid_size + grid_size // 2
+        if math.hypot(player.x - goal_x, player.y - goal_y) < 12:
+            message = "WYGRAŁEŚ!"
+            game_over = True
+
+        # Sprawdź boty tylko jeśli gracz jeszcze nie wygrał
+        if not game_over:
+            for bot in bots:
+                if math.hypot(bot.x - goal_x, bot.y - goal_y) < 12:
+                    message = "PRZEGRAŁEŚ!"
+                    game_over = True
+                    break  # Wystarczy, że jeden bot dotrze
+
+    # Rysowanie
+    win.fill(WHITE)
+    for y in range(rows):
+        for x in range(cols):
+            if grid[y][x] == 1:
+                pygame.draw.rect(win, GRAY, (x * grid_size, y * grid_size, grid_size - 1, grid_size - 1))
+
+    pygame.draw.rect(win, YELLOW, (goal[0] * grid_size, goal[1] * grid_size, grid_size, grid_size))
+
+    player.draw()
+    for bot in bots:
+        bot.draw()
+
+    if game_over:
+        text = font.render(message, True, BLACK)
+        win.blit(text, (WIDTH // 2 - text.get_width() // 2, HEIGHT // 2 - text.get_height() // 2))
+
+    pygame.display.flip()
+
+pygame.quit()

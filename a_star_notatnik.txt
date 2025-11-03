@@ -1,0 +1,118 @@
+import subprocess
+import math
+
+class Node:
+    def __init__(self, parent=None, position=None):
+        self.parent = parent
+        self.position = position
+        self.g = 0  # Koszt od startu
+        self.h = 0  # Heurystyka do konca
+        self.f = 0  # g + h
+
+    def __eq__(self, other):
+        return self.position == other.position
+
+    def __lt__(self, other):
+        return self.f < other.f
+
+
+def wczytaj_mape(generator):
+    try:
+        wynik = subprocess.run([generator], capture_output=True, text=True, check=True, encoding='utf-8')
+        output = wynik.stdout.strip()
+        mapa = []
+        for line in output.splitlines():
+            linia = line.strip()
+            if linia and linia[0].isdigit():
+                mapa.append([int(char) for char in linia.split()])
+        if not mapa:
+            print("Błąd: Nie udało się odczytać danych mapy z wyjścia generatora.")
+            return None
+        return mapa
+    except FileNotFoundError:
+        print(f"Błąd: Plik '{generator}' nie został znaleziony.")
+        return None
+    except Exception as e:
+        print(f"Wystąpił błąd: {e}")
+        return None
+
+
+def heurystyka(pozycja, cel):
+    return math.sqrt((pozycja[0] - cel[0]) ** 2 + (pozycja[1] - cel[1]) ** 2)
+
+
+def astar(map_grid, pozycja_start, pozycja_cel):
+    start = Node(None, pozycja_start)
+    meta = Node(None, pozycja_cel)
+    lista_otwartych = []
+    lista_zamknietych = set()
+    lista_otwartych.append(start)
+    wysokosc_mapy = len(map_grid)
+    szerokosc_mapy = len(map_grid[0])
+
+    while len(lista_otwartych) > 0:
+        current_node = lista_otwartych[0]
+        current_index = 0
+        for index, item in enumerate(lista_otwartych):
+            if item.f < current_node.f:
+                current_node = item
+                current_index = index
+        lista_otwartych.pop(current_index)
+        if current_node.position in lista_zamknietych:
+            continue
+        lista_zamknietych.add(current_node.position)
+        if current_node == meta:
+            sciezka = []
+            current = current_node
+            while current is not None:
+                sciezka.append(current.position)
+                current = current.parent
+            return sciezka[::-1]
+        ruchy = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        for ruch in ruchy:
+            node_position = (current_node.position[0] + ruch[0], current_node.position[1] + ruch[1])
+            if not (0 <= node_position[0] < wysokosc_mapy and 0 <= node_position[1] < szerokosc_mapy):
+                continue
+            if map_grid[node_position[0]][node_position[1]] == 5:
+                continue
+            if node_position in lista_zamknietych:
+                continue
+
+            neighbor_node = Node(current_node, node_position)
+            neighbor_node.g = current_node.g + 1
+            neighbor_node.h = heurystyka(neighbor_node.position, meta.position)
+            neighbor_node.f = neighbor_node.g + neighbor_node.h
+            lista_otwartych.append(neighbor_node)
+    print("\nNie znaleziono żadnej ścieżki")
+    return None
+
+
+def print_map(map_grid, sciezka=None):
+    if not map_grid: return
+    mapa_wyswietlana = [row[:] for row in map_grid]
+    if sciezka:
+        for krok in sciezka[1:-1]:
+            mapa_wyswietlana[krok[0]][krok[1]] = 3
+    for row in mapa_wyswietlana:
+        print(" ".join(f"{cell:<1}" for cell in row))
+
+
+if __name__ == '__main__':
+    generator_mapy = './map_generator.exe'
+    print("Generowanie mapy: Wciśnij ENTER")
+    grid = wczytaj_mape(generator_mapy)
+    if grid:
+        print("\nOryginalna mapa:")
+        print_map(grid)
+        map_h = len(grid)
+        start_ja = (0,0)
+        koniec_ja = (19,19)
+        start= (map_h-1-start_ja[1], start_ja[0])
+        koniec= (map_h-1- koniec_ja[1], koniec_ja[0])
+        sciezka = astar(grid, start, koniec)
+
+        if sciezka:
+            print("\nMapa z zaznaczoną optymalną trasą (3):")
+            print_map(grid, sciezka)
+        else:
+            print("\nNie udało się znaleźć ścieżki.")
