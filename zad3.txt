@@ -10,31 +10,29 @@ using namespace NXT;
 Comm::NXTComm polaczenie;
 
 // --- PARAMETRY REGULATORA PD ---
-// Wcześniej: ksi i rho
-double Kp = 1.0; // Człon Proporcjonalny (siła reakcji na błąd)
-double Kd = 0.5; // Człon Różniczkujący (reakcja na szybkość zmian/tłumienie)
+double Kp = 1.0; 
+double Kd = 0.5; 
 
 // --- FUNKCJE POMOCNICZE ---
 
-// Oblicza najkrótszą drogę obrotu do celu (wcześniej funkcja convert)
+// Oblicza najkrótszą drogę obrotu do celu
 // Zwraca błąd w zakresie -180 do 180 stopni
 int ObliczBladKata(int cel, int aktualny)
 {
-    int roznica = aktualny - cel; // [cite: 2]
+    int roznica = aktualny - cel;
     
     if (roznica > 180)
     {
-        roznica -= 360; // [cite: 3]
+        roznica -= 360;
     }
     else if (roznica < -180)
     {
-        roznica += 360; // [cite: 3]
+        roznica += 360;
     }
     return roznica;
 }
 
 // Funkcja przycinająca wartości mocy silnika do zakresu -100 do 100
-// (Wcześniej rozbudowane if/else wewnątrz pętli sterowania)
 int LimitujMoc(int moc)
 {
     if (moc > 100) return 100;
@@ -42,39 +40,27 @@ int LimitujMoc(int moc)
     return moc;
 }
 
-// Funkcja realizująca algorytm sterowania (wcześniej steer)
-// Używana do testu statycznego (opcja 'X')
 void TestujRegulator(int bazaLewy, int bazaPrawy, int cel, int aktualnyKat)
 {
-    static int ostatniBlad = 0; // Pcte w starym kodzie
+    static int ostatniBlad = 0; 
     
-    // 1. Obliczenie uchybu (cte)
-    int blad = ObliczBladKata(cel, aktualnyKat); // [cite: 5]
+    int blad = ObliczBladKata(cel, aktualnyKat); 
+    int deltaBledu = blad - ostatniBlad;
     
-    // 2. Obliczenie zmiany uchybu (Dcte)
-    int deltaBledu = blad - ostatniBlad; // [cite: 5]
+    double sygnalSterujacy = (Kp * blad) + (Kd * deltaBledu); 
     
-    // 3. Wyliczenie sygnału sterującego (PID formula)
-    double sygnalSterujacy = (Kp * blad) + (Kd * deltaBledu); // 
-    
-    // 4. Aplikacja sterowania na silniki
     int wynikLewy = 0;
     int wynikPrawy = 0;
-
-    // Logika mieszania sygnałów (zachowana z oryginału, ale uproszczona zapisem)
-    if (blad <= 0) // Skręt w jedną stronę [cite: 7]
+    if (blad <= 0)
     {
         wynikPrawy = LimitujMoc(bazaLewy + (int)sygnalSterujacy);
-        // Uwaga: w oryginale logika była specyficzna dla k2, tutaj to upraszczamy zachowując sens
-        // Jeśli chcesz idealną kopię zachowania "klatkowania" z oryginału dla małych prędkości (10), 
-        // to funkcja LimitujMoc z parametrem 10 załatwia sprawę.
     }
-    else // Skręt w drugą stronę [cite: 9]
+    else 
     {
         wynikLewy = LimitujMoc(bazaPrawy - (int)sygnalSterujacy);
     }
     
-    ostatniBlad = blad; // Zapamiętanie błędu dla następnego cyklu [cite: 9]
+    ostatniBlad = blad; 
     cout << "Moc L: " << wynikLewy << " | Moc P: " << wynikPrawy << endl;
 }
 
@@ -86,16 +72,14 @@ int main()
     if (NXT::OpenBT(&polaczenie))
     {
         cout << "[SUKCES] Polaczono z NXT!";
-        cout << "\nBateria: " << NXT::BatteryLevel(&polaczenie) << "mV"; // [cite: 12]
+        cout << "\nBateria: " << NXT::BatteryLevel(&polaczenie) << "mV"; 
         
         // Zmienne sterowania manualnego
-        int predkoscJazdy = 30; // dawniej x [cite: 13]
-        int predkoscObrotu = 20; // dawniej y [cite: 13]
+        int predkoscJazdy = 30; 
+        int predkoscObrotu = 20;
         int tempJazda = 30;
         int tempObrot = 20;
         char ostatniRuch;
-
-        // Inicjalizacja sensorów
         NXT::Sensor::SetSonar(&polaczenie, IN_1); // Kompas/Sonar na porcie 1 [cite: 13]
         NXT::StartProgram(&polaczenie, "program1");
 
@@ -105,7 +89,6 @@ int main()
         cout << "\n P - Automatyczna stabilizacja kursu (PID)";
         cout << "\n O - Stabilizacja wzgledem startu (PID Relatywny)";
         cout << "\n K - Zakoncz"; 
-        // [cite: 15, 16, 17, 19, 20, 21]
 
         do
         {
@@ -117,62 +100,57 @@ int main()
                 if (klawisz == 'P' || klawisz == 'p')
                 {
                     int mocBazowaL = 30, mocBazowaP = 30;
-                    int celKata = 0; // k w starym kodzie
+                    int celKata = 0;
                     int aktualnyKat, blad;
-                    int poprzedniBlad = 0; // Pcte
+                    int poprzedniBlad = 0; 
 
                     cout << "\n[TRYB PID] Utrzymywanie kursu: " << celKata;
 
                     do {
-                        // Pobranie danych z czujnika (zakładamy, że sonar robi za kompas x2)
-                        aktualnyKat = 2 * NXT::Sensor::GetSonarValue(&polaczenie, IN_1); // [cite: 23]
+                        aktualnyKat = 2 * NXT::Sensor::GetSonarValue(&polaczenie, IN_1);
                         
-                        // Ustawienie bazowej prędkości
                         NXT::Motor::SetForward(&polaczenie, OUT_C, mocBazowaL);
                         NXT::Motor::SetForward(&polaczenie, OUT_B, mocBazowaP);
 
                         // --- ALGORYTM PID ---
-                        blad = ObliczBladKata(celKata, aktualnyKat); // [cite: 24]
-                        int delta = blad - poprzedniBlad;            // Człon D [cite: 24]
-                        double korekta = (Kp * blad) + (Kd * delta); // Wyjście regulatora [cite: 24]
+                        blad = ObliczBladKata(celKata, aktualnyKat); 
+                        int delta = blad - poprzedniBlad;            
+                        double korekta = (Kp * blad) + (Kd * delta);
 
-                        // Aplikacja korekty na silniki (Mieszanie sygnałów)
-                        if (blad <= 0) // [cite: 25]
+
+                        if (blad <= 0) 
                         {
-                            // Korygujemy prawy silnik (B)
                             int nowaMocB = mocBazowaL + (int)korekta;
                             
-                            // Zabezpieczenie przed przeciążeniem silnika (w oryginale logika if/else if)
-                            if (nowaMocB > mocBazowaP) NXT::Motor::SetForward(&polaczenie, OUT_B, mocBazowaP); // [cite: 25]
-                            else if (nowaMocB < -mocBazowaP) NXT::Motor::SetReverse(&polaczenie, OUT_B, mocBazowaP); // [cite: 26]
-                            else NXT::Motor::SetForward(&polaczenie, OUT_B, nowaMocB); // [cite: 26]
+                            if (nowaMocB > mocBazowaP) NXT::Motor::SetForward(&polaczenie, OUT_B, mocBazowaP); 
+                            else if (nowaMocB < -mocBazowaP) NXT::Motor::SetReverse(&polaczenie, OUT_B, mocBazowaP); 
+                            else NXT::Motor::SetForward(&polaczenie, OUT_B, nowaMocB);
                         }
-                        else // blad > 0 [cite: 27]
+                        else // blad > 0
                         {
-                            // Korygujemy lewy silnik (C)
                             int nowaMocC = mocBazowaP - (int)korekta;
 
-                            if (nowaMocC > mocBazowaL) NXT::Motor::SetForward(&polaczenie, OUT_C, mocBazowaL); // [cite: 27]
-                            else if (nowaMocC < -mocBazowaL) NXT::Motor::SetReverse(&polaczenie, OUT_C, mocBazowaL); // [cite: 28]
-                            else NXT::Motor::SetForward(&polaczenie, OUT_C, nowaMocC); // [cite: 28]
+                            if (nowaMocC > mocBazowaL) NXT::Motor::SetForward(&polaczenie, OUT_C, mocBazowaL); 
+                            else if (nowaMocC < -mocBazowaL) NXT::Motor::SetReverse(&polaczenie, OUT_C, mocBazowaL);
+                            else NXT::Motor::SetForward(&polaczenie, OUT_C, nowaMocC);
                         }
 
-                        poprzedniBlad = blad; // Zapamiętanie błędu [cite: 28]
+                        poprzedniBlad = blad;
 
                         // Obsługa zmiany celu w locie (N, S, E, W)
                         if (kbhit())
                         {
                             char subDecyzja = getch();
-                            if (subDecyzja == 'K' || subDecyzja == 'k') { // Wyjście [cite: 29]
+                            if (subDecyzja == 'K' || subDecyzja == 'k') {
                                 NXT::Motor::Stop(&polaczenie, OUT_B, 0);
                                 NXT::Motor::Stop(&polaczenie, OUT_C, 0);
                                 break; 
                             }
                             // Zmiana kierunku
-                            if (subDecyzja == 'N' || subDecyzja == 'n') celKata = 0;   // [cite: 30]
-                            if (subDecyzja == 'S' || subDecyzja == 's') celKata = 180; // [cite: 31]
-                            if (subDecyzja == 'E' || subDecyzja == 'e') celKata = 90;  // [cite: 31]
-                            if (subDecyzja == 'W' || subDecyzja == 'w') celKata = 270; // [cite: 32]
+                            if (subDecyzja == 'N' || subDecyzja == 'n') celKata = 0;  
+                            if (subDecyzja == 'S' || subDecyzja == 's') celKata = 180; 
+                            if (subDecyzja == 'E' || subDecyzja == 'e') celKata = 90;  
+                            if (subDecyzja == 'W' || subDecyzja == 'w') celKata = 270;
                         }
                     } while (true);
                 }
@@ -181,12 +159,9 @@ int main()
                 if (klawisz == 'O' || klawisz == 'o')
                 {
                     // Pobierz początkowy kąt jako cel
-                    int startowyKat = 2 * NXT::Sensor::GetSonarValue(&polaczenie, IN_1); // [cite: 33]
+                    int startowyKat = 2 * NXT::Sensor::GetSonarValue(&polaczenie, IN_1);
                     int celRelatywny = startowyKat;
-                    // ... reszta logiki analogiczna do pętli wyżej, używając 'celRelatywny'
-                    // Skróciłem to w tym przykładzie, bo logika PID jest identyczna jak w 'P'
                     cout << "\n[TRYB O] Zablokowano kurs na: " << celRelatywny;
-                    // Tutaj wkleiłbyś pętlę do-while identyczną jak wyżej
                 }
 
                 // --- STEROWANIE MANUALNE ---
