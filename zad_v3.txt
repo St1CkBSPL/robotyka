@@ -1,0 +1,333 @@
+#include "NXT++.h"
+#include <iostream>
+#include <conio.h>
+#include <ctime>
+#include <vector>
+using namespace std;
+using namespace NXT;
+
+Comm::NXTComm nxt_comm; 
+
+//PRZED UŻYCIEM SPRZETU DOKŁADNIE SPRAWDZAMY: 
+//DO KTÓRYCH PORTÓW WEJŚCIOWYCH (IN) PODŁĄCZONE SĄ SENSORY,\
+//DO KTÓRYCH PORTÓW WYJŚCIOWYCH (OUT) PODŁĄCZONE SĄ SERVO-MOTORY,
+//STARAMY SIĘ PISAC KOD Z MOŻLIWOŚCIĄ ZATRZYMANIA ROBOTA W KAŻDEJ CHWILI,
+//ROBOT POWIENIEN BYC PRZEMIESZCZONY W MIEJSCE TESTÓW ZA POŚREDNICTWEM ZDALNEGO STEROWANIA,
+//CZUJNIKI SA INICJOWANE PRZED PETLA NIESKONCZONA,
+//CZUJNIKI SA DEAKTYWOWANE ZA PETLA NIESKONCZONA, LUB PO KOMENDZIE k,
+
+int calculate_error(int center_offset, int input_val) 
+{
+	input_val = input_val - center_offset;
+	if (input_val > 88)
+	{
+		input_val = input_val - 176;
+	}
+	else if (input_val < -88)
+	{
+		input_val = 176 + input_val;
+	}
+	return input_val;
+}
+
+double gain_P = 1, gain_D = 0.5;
+
+
+int main()
+{
+	srand(time(NULL));
+
+	cout << "Szukanie sygnalu... to moze zajac chwile.\n";
+	if (NXT::OpenBT(&nxt_comm)) //initialize the NXT and continue if it succeeds
+	{
+		cout << "Sygnal znaleziony!";
+		cout << "\nPoziom baterii = " << NXT::BatteryLevel(&nxt_comm);
+		cout << "\nDostepna pamiec flash = " << NXT::GetAvailableFlash(&nxt_comm);
+		
+		int speed_linear = 30;
+		int prev_speed_linear = 30;
+
+		int speed_turn = 20;
+		int prev_speed_turn = 20;
+
+		char last_command;
+
+		//Przed uzyciem sprawdzamy numer portu do którego jest podlączony sensor, 
+		//NXT::Sensor::SetTouch(&nxt_comm, IN_1);//inicjacja sensora dotyku
+
+		//aktywacja kompasu,
+		//NXT::Sensor::SetSonar(&nxt_comm, IN_3);
+		//aktywacja czujnika koloru
+		//NXT::Sensor::SetColor(&nxt_comm, IN_2, 'n');
+		//int color_val; 
+
+		//aktywacja sonaru,
+		//NXT::Sensor::SetSonar(&nxt_comm, IN_3);
+
+		//początek programu
+		NXT::StartProgram(&nxt_comm, "program1");
+
+		//zmienna używana do sterowania
+		char key_input;
+		cout << "\n ___Podstawowe sterowanie do uzupelnienia___";
+		cout << "\n A - jazda w lewo";
+		cout << "\n D - jazda w prawo";
+		cout << "\n W - jazda na wprost";
+		cout << "\n S - jazda do tylu";
+		cout << "\n U - odczyt z sonaru";
+		cout << "\n C - odczyt nasycenia koloru";
+		cout << "\n V - odczyt z kompasu";
+		cout << "\n H - Zatrzymanie silnikow";
+		cout << "\n T - test";
+		cout << "\n P - śledzenie piłki";
+		cout << "\n K - Koniec Programu";
+
+		do
+		{
+			//Przed uzyciem sprawdzamy numer portu do którego jest podlączony sensor, 
+			if (kbhit() == true)
+			{
+
+				key_input = getch();
+
+				if (key_input == 'T' || key_input == 't')
+				{
+					
+				}
+				if (key_input == 'P' || key_input == 'p')
+				{
+					// ---------- Inicjalizacja kamery i tabeli danych ------------- //
+					int obj_count;
+					NXT::NxtCam::NxtCamInit(&nxt_comm, IN_1);
+					NXT::NxtCam::NxtCamFlush(&nxt_comm, IN_1);
+					obj_count = NXT::NxtCam::GetNxtCamNumObjects(&nxt_comm, IN_1);
+					std::vector<std::vector <int>> cam_data;
+					cam_data.resize(obj_count);
+					for (int i = 0; i < cam_data.size(); i++)
+					{
+						cam_data[i].resize(6);
+					}
+					for (int i = 0; i < obj_count; i++)
+					{
+						for (int j = 0; j < 6; j++)
+						{
+							cam_data[i][j] = 0;
+						}
+					}
+					// ------------------------------------------------------------- //
+					// zakładamy niebieski = 1, czerwony = 2 dla symbolu koloru
+					int power_left, power_right, center_x = 88, obj_x_pos, error_curr, error_prev = 0, manual_bias; // Zmieniono: k1, k2, k, orient, cte, Pcte, reakcja
+					do
+					{
+						power_left = 10;
+						power_right = 10;
+				
+						cam_data = NXT::NxtCam::GetNxtCamObjects(&nxt_comm, IN_1, 0);// informacje z kamery
+						NXT::Motor::SetForward(&nxt_comm, OUT_B, 5);
+						NXT::Motor::SetReverse(&nxt_comm, OUT_C, 5);
+						if (cam_data[0][0] != 0)
+						{
+
+							if (manual_bias > 0)
+							{
+								NXT::Motor::SetForward(&nxt_comm, OUT_B, manual_bias * 5);
+								NXT::Motor::SetForward(&nxt_comm, OUT_C, manual_bias * 5);
+							}
+							else if (manual_bias < 0)
+							{
+								NXT::Motor::SetReverse(&nxt_comm, OUT_B, manual_bias * 5);
+								NXT::Motor::SetReverse(&nxt_comm, OUT_C, manual_bias * 5);
+							}
+
+							obj_x_pos = cam_data[0][1];
+							error_curr = calculate_error(center_x, obj_x_pos);
+							int error_diff = error_curr - error_prev; // Zmieniono: Dcte
+							double pid_correction = gain_P * error_curr + gain_D * error_diff; 
+							if (error_curr <= 0)
+							{
+								if (power_left + pid_correction > power_right)
+								{
+									NXT::Motor::SetForward(&nxt_comm, OUT_B, power_right);
+								}
+								else if (power_left + pid_correction < -power_right)
+								{
+									NXT::Motor::SetReverse(&nxt_comm, OUT_B, power_right);
+								}
+								else
+								{
+									NXT::Motor::SetForward(&nxt_comm, OUT_B, power_left + pid_correction);
+								}
+
+							}
+
+							if (error_curr > 0)
+							{
+								if (power_right - pid_correction > power_left)
+								{
+									NXT::Motor::SetForward(&nxt_comm, OUT_C, power_left);
+								}
+								else if (power_right - pid_correction < -power_left)
+								{
+									NXT::Motor::SetReverse(&nxt_comm, OUT_C, power_left);
+								}
+								else
+								{
+									NXT::Motor::SetForward(&nxt_comm, OUT_C, power_right - pid_correction);
+								}
+							}
+							error_prev = error_curr;
+							if (kbhit() == true)
+							{
+								key_input = getch();
+								if (key_input == 'K' || key_input == 'k')
+								{
+									NXT::Motor::Stop(&nxt_comm, OUT_B, 0);
+									NXT::Motor::Stop(&nxt_comm, OUT_C, 0);
+									NXT::Motor::Stop(&nxt_comm, OUT_A, 0);
+									NXT::Sensor::SetSonarOff(&nxt_comm, IN_1);
+									//NXT::Sensor::SetColorOff(&nxt_comm, IN_2);
+
+									break;
+								}
+
+								if (key_input == 'Q' || key_input == 'Q')
+								{
+									manual_bias += 1;
+								}
+								if (key_input == 'E' || key_input == 'E')
+								{
+									manual_bias -= 1;
+								}
+								continue;
+							}
+						}
+
+					} while (key_input != 'K' && key_input != 'k');
+				}
+				if (key_input == 'N' || key_input == 'n')
+				{
+					speed_linear -= 10;
+				}
+
+				if (key_input == 'M' || key_input == 'm')
+				{
+					speed_linear += 10;
+				}
+
+				if (key_input == 'V' || key_input == 'v')
+				{
+					speed_turn--;
+				}
+
+				if (key_input == 'B' || key_input == 'b')
+				{
+					speed_turn++;
+				}
+				//Przed uzyciem serwo sprawdzamy numer portu do którego jest podlączony,
+				if (key_input == 'A' || key_input == 'a' || (prev_speed_turn != speed_turn && last_command == 'a'))
+				{
+					prev_speed_turn = speed_turn;
+					last_command = 'a';
+					NXT::Motor::SetForward(&nxt_comm, OUT_B, speed_turn);
+					NXT::Motor::SetReverse(&nxt_comm, OUT_C, speed_turn);
+					//cout<<"SonarValue = "<<NXT::Sensor::GetSonarValue(&nxt_comm, IN_4);
+				}
+
+				//Przed uzyciem serwo sprawdzamy numer portu do którego jest podlączony,
+				if (key_input == 'D' || key_input == 'd' || (prev_speed_turn != speed_turn && last_command == 'd'))
+				{
+					prev_speed_turn = speed_turn;
+					last_command = 'd';
+					NXT::Motor::SetReverse(&nxt_comm, OUT_B, speed_turn);
+					NXT::Motor::SetForward(&nxt_comm, OUT_C, speed_turn);
+				}
+
+				//Przed uzyciem serwo sprawdzamy numer portu do którego jest podlączony,
+				if (key_input == 'W' || key_input == 'w' || (prev_speed_linear != speed_linear && last_command == 'w'))
+				{
+					prev_speed_linear = speed_linear;
+					last_command = 'w';
+					NXT::Motor::SetForward(&nxt_comm, OUT_B, speed_linear);
+					NXT::Motor::SetForward(&nxt_comm, OUT_C, speed_linear);
+				}
+
+				//Przed uzyciem serwo sprawdzamy numer portu do którego jest podlączony,
+				if (key_input == 'S' || key_input == 's' || (prev_speed_linear != speed_linear && last_command == 's'))
+				{
+					prev_speed_linear = speed_linear;
+					last_command = 's';
+					NXT::Motor::SetReverse(&nxt_comm, OUT_B, speed_linear);
+					NXT::Motor::SetReverse(&nxt_comm, OUT_C, speed_linear);
+				}
+
+				//Przed uzyciem serwo sprawdzamy numer portu do którego jest podlączony,
+				if (key_input == 'H' || key_input == 'h')
+				{
+					NXT::Motor::SetForward(&nxt_comm, OUT_B, 0);
+					NXT::Motor::SetForward(&nxt_comm, OUT_C, 0);
+					NXT::Motor::Stop(&nxt_comm, OUT_B, 0);
+					NXT::Motor::Stop(&nxt_comm, OUT_C, 0);
+				}
+
+				//Przed uzyciem serwo sprawdzamy numer portu do którego jest podlączony,
+				if (key_input == 'K' || key_input == 'k')
+				{
+					NXT::Motor::Stop(&nxt_comm, OUT_B, 0);
+					NXT::Motor::Stop(&nxt_comm, OUT_C, 0);
+					NXT::Motor::Stop(&nxt_comm, OUT_A, 0);
+					NXT::Sensor::SetSonarOff(&nxt_comm, IN_1);
+					NXT::Sensor::SetColorOff(&nxt_comm, IN_2);
+
+					break;
+				}
+
+				//Przed uzyciem sprawdzamy numer portu do którego jest podlączony sensor, 
+				//if (key_input == 'U' || key_input == 'u')
+				//{
+				//	cout << "\n Wskazanie sonaru = " << NXT::Sensor::GetSonarValue(&nxt_comm, IN_3);
+				//}
+				if (key_input == 'V' || key_input == 'v')
+				{
+					cout << "\n Wskazanie kompasu = " << NXT::Sensor::GetSonarValue(&nxt_comm, IN_3);
+				}
+
+				//Przed uzyciem sprawdzamy numer portu do którego jest podlączony sensor, 
+				//if (key_input == 'C' || key_input == 'c')
+				//{
+				//	color_val = NXT::Sensor::GetValue(&nxt_comm, IN_2);
+				//	Wait(50);
+				//	cout << "\nNasycenie swaitla = " << color_val;
+				//}
+
+				continue;
+			}
+		} while (key_input != 'k' && key_input != 'K');
+
+		NXT::StopProgram(&nxt_comm);
+	}
+	NXT::Close(&nxt_comm); //close communication with NXT
+
+	cout << "\n\nPress ENTER to close program";
+	getchar();
+
+	return 0;
+}
+
+
+//opcje dotyczace Mindstorm NXT v. 1.0
+
+//if(key_input=='L' || key_input=='l')
+// {
+//  NXT::Sensor::SetLight(&nxt_comm, IN_3, 1);
+//  Wait(50);
+//  cout<<"LightValue = "<<NXT::Sensor::GetValue(&nxt_comm, IN_3);
+//  Wait(50);
+//  NXT::Sensor::SetLight(&nxt_comm, IN_3, 0);
+// }
+
+	//if(key_input=='O' || key_input=='o')
+// {
+// NXT::Sensor::SetSound(&nxt_comm, IN_2);
+// Wait(50);
+// cout<<"SoundValue = "<<NXT::Sensor::GetValue(&nxt_comm, IN_2);
+// }
