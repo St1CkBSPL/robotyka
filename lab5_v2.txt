@@ -1,0 +1,211 @@
+#include "NXT++.h"
+#include <iostream>
+#include <conio.h>
+#include <ctime>
+#include <vector>
+
+using namespace std;
+using namespace NXT;
+
+// Obiekt komunikacji z robotem
+Comm::NXTComm polaczenieNXT;
+
+// Oblicza odchylenie od środka obrazu
+int normalizujBlad(int punktOdniesienia, int odczyt)
+{
+    int wynik = odczyt - punktOdniesienia;
+
+    if (wynik > 88)
+    {
+        wynik = wynik - 176;
+    }
+    else if (wynik < -88)
+    {
+        wynik = 176 + wynik;
+    }
+    return wynik;
+}
+
+// Parametry regulatora PD 
+double wspolczynnikP = 1.0; 
+double wspolczynnikD = 0.5; 
+
+int main()
+{
+    srand(time(NULL));
+
+    cout << "Nawiązywanie połączenia z NXT...\n";
+
+    if (NXT::OpenBT(&polaczenieNXT))
+    {
+        cout << "Połączono z robotem!";
+        cout << "\nBateria: " << NXT::BatteryLevel(&polaczenieNXT) << "mV";
+        cout << "\nPamięć Flash: " << NXT::GetAvailableFlash(&polaczenieNXT) << " bajtów";
+
+        // Zmienne sterujące prędkością
+        int mocSilnikaJazda = 30;      
+        int poprzedniaMocJazda = 30;   
+
+        int mocSilnikaSkret = 20;     
+        int poprzedniaMocSkret = 20;
+
+        char ostatniaKomenda;
+
+        // NXT::Sensor::SetTouch(&polaczenieNXT, IN_1);
+        // NXT::Sensor::SetSonar(&polaczenieNXT, IN_3);
+
+        NXT::StartProgram(&polaczenieNXT, "program1");
+
+        char wcisnietyKlawisz; 
+
+        cout << "\n\n___ STEROWANIE ROBOTEM ___";
+        cout << "\n [W/S] - Przód / Tył";
+        cout << "\n [A/D] - Skręt Lewo / Prawo";
+        cout << "\n [N/M] - Zmiana prędkości jazdy (-/+)";
+        cout << "\n [V/B] - Zmiana prędkości skrętu (-/+)";
+        cout << "\n [H]   - Stop awaryjny";
+        cout << "\n [K]   - Zakończ program\n";
+
+        do
+        {
+            if (kbhit() == true)
+            {
+                wcisnietyKlawisz = getch();
+
+                            // Algorytm PD
+                            pozycjaX = daneKamery[0][1];
+                            aktualnyBlad = normalizujBlad(srodekObrazu, pozycjaX);
+                            
+                            int deltaBledu = aktualnyBlad - poprzedniBlad; // Dcte
+                            double sterowanie = wspolczynnikP * aktualnyBlad + wspolczynnikD * deltaBledu;
+
+                            // Sterowanie silnikiem lewym (OUT_B)
+                            if (aktualnyBlad <= 0)
+                            {
+                                if (bazaLewa + sterowanie > bazaPrawa)
+                                    NXT::Motor::SetForward(&polaczenieNXT, OUT_B, bazaPrawa);
+                                else if (bazaLewa + sterowanie < -bazaPrawa)
+                                    NXT::Motor::SetReverse(&polaczenieNXT, OUT_B, bazaPrawa);
+                                else
+                                    NXT::Motor::SetForward(&polaczenieNXT, OUT_B, bazaLewa + sterowanie);
+                            }
+
+                            // Sterowanie silnikiem prawym (OUT_C)
+                            if (aktualnyBlad > 0)
+                            {
+                                if (bazaPrawa - sterowanie > bazaLewa)
+                                    NXT::Motor::SetForward(&polaczenieNXT, OUT_C, bazaLewa);
+                                else if (bazaPrawa - sterowanie < -bazaLewa)
+                                    NXT::Motor::SetReverse(&polaczenieNXT, OUT_C, bazaLewa);
+                                else
+                                    NXT::Motor::SetForward(&polaczenieNXT, OUT_C, bazaPrawa - sterowanie);
+                            }
+                            
+                            poprzedniBlad = aktualnyBlad;
+
+                            // Obsługa wyjścia i korekcji w trakcie pętli P
+                            if (kbhit() == true)
+                            {
+                                wcisnietyKlawisz = getch();
+                                if (wcisnietyKlawisz == 'K' || wcisnietyKlawisz == 'k')
+                                {
+                                    NXT::Motor::Stop(&polaczenieNXT, OUT_B, 0);
+                                    NXT::Motor::Stop(&polaczenieNXT, OUT_C, 0);
+                                    NXT::Motor::Stop(&polaczenieNXT, OUT_A, 0);
+                                    NXT::Sensor::SetSonarOff(&polaczenieNXT, IN_1);
+                                    break;
+                                }
+                                if (wcisnietyKlawisz == 'Q' || wcisnietyKlawisz == 'q') modyfikatorReczny += 1;
+                                if (wcisnietyKlawisz == 'E' || wcisnietyKlawisz == 'e') modyfikatorReczny -= 1;
+                                continue;
+                            }
+                        }
+                    } while (wcisnietyKlawisz != 'K' && wcisnietyKlawisz != 'k');
+                }
+
+                // ---------------- STEROWANIE RĘCZNE ---------------- //
+
+                // Zmiana prędkości liniowej
+                if (wcisnietyKlawisz == 'N' || wcisnietyKlawisz == 'n') mocSilnikaJazda -= 10;
+                if (wcisnietyKlawisz == 'M' || wcisnietyKlawisz == 'm') mocSilnikaJazda += 10;
+
+                // Zmiana prędkości obrotowej
+                if (wcisnietyKlawisz == 'V' || wcisnietyKlawisz == 'v') mocSilnikaSkret--;
+                if (wcisnietyKlawisz == 'B' || wcisnietyKlawisz == 'b') mocSilnikaSkret++;
+
+                // Skręt w lewo (A)
+                if (wcisnietyKlawisz == 'A' || wcisnietyKlawisz == 'a' || (poprzedniaMocSkret != mocSilnikaSkret && ostatniaKomenda == 'a'))
+                {
+                    poprzedniaMocSkret = mocSilnikaSkret;
+                    ostatniaKomenda = 'a';
+                    NXT::Motor::SetForward(&polaczenieNXT, OUT_B, mocSilnikaSkret);
+                    NXT::Motor::SetReverse(&polaczenieNXT, OUT_C, mocSilnikaSkret);
+                }
+
+                // Skręt w prawo (D)
+                if (wcisnietyKlawisz == 'D' || wcisnietyKlawisz == 'd' || (poprzedniaMocSkret != mocSilnikaSkret && ostatniaKomenda == 'd'))
+                {
+                    poprzedniaMocSkret = mocSilnikaSkret;
+                    ostatniaKomenda = 'd';
+                    NXT::Motor::SetReverse(&polaczenieNXT, OUT_B, mocSilnikaSkret);
+                    NXT::Motor::SetForward(&polaczenieNXT, OUT_C, mocSilnikaSkret);
+                }
+
+                // Jazda prosto (W)
+                if (wcisnietyKlawisz == 'W' || wcisnietyKlawisz == 'w' || (poprzedniaMocJazda != mocSilnikaJazda && ostatniaKomenda == 'w'))
+                {
+                    poprzedniaMocJazda = mocSilnikaJazda;
+                    ostatniaKomenda = 'w';
+                    NXT::Motor::SetForward(&polaczenieNXT, OUT_B, mocSilnikaJazda);
+                    NXT::Motor::SetForward(&polaczenieNXT, OUT_C, mocSilnikaJazda);
+                }
+
+                // Jazda w tył (S)
+                if (wcisnietyKlawisz == 'S' || wcisnietyKlawisz == 's' || (poprzedniaMocJazda != mocSilnikaJazda && ostatniaKomenda == 's'))
+                {
+                    poprzedniaMocJazda = mocSilnikaJazda;
+                    ostatniaKomenda = 's';
+                    NXT::Motor::SetReverse(&polaczenieNXT, OUT_B, mocSilnikaJazda);
+                    NXT::Motor::SetReverse(&polaczenieNXT, OUT_C, mocSilnikaJazda);
+                }
+
+                // Stop (H)
+                if (wcisnietyKlawisz == 'H' || wcisnietyKlawisz == 'h')
+                {
+                    NXT::Motor::SetForward(&polaczenieNXT, OUT_B, 0);
+                    NXT::Motor::SetForward(&polaczenieNXT, OUT_C, 0);
+                    NXT::Motor::Stop(&polaczenieNXT, OUT_B, 0);
+                    NXT::Motor::Stop(&polaczenieNXT, OUT_C, 0);
+                }
+
+                // Koniec programu (K)
+                if (wcisnietyKlawisz == 'K' || wcisnietyKlawisz == 'k')
+                {
+                    NXT::Motor::Stop(&polaczenieNXT, OUT_B, 0);
+                    NXT::Motor::Stop(&polaczenieNXT, OUT_C, 0);
+                    NXT::Motor::Stop(&polaczenieNXT, OUT_A, 0);
+                    NXT::Sensor::SetSonarOff(&polaczenieNXT, IN_1);
+                    NXT::Sensor::SetColorOff(&polaczenieNXT, IN_2);
+                    break;
+                }
+
+                // Odczyt kompasu (V - kolizja z prędkością, zostawione jak w oryginale)
+                if (wcisnietyKlawisz == 'V' || wcisnietyKlawisz == 'v')
+                {
+                    cout << "\n Kompas: " << NXT::Sensor::GetSonarValue(&polaczenieNXT, IN_3);
+                }
+                
+                continue;
+            }
+        } while (wcisnietyKlawisz != 'k' && wcisnietyKlawisz != 'K');
+
+        NXT::StopProgram(&polaczenieNXT);
+    }
+    
+    NXT::Close(&polaczenieNXT); 
+
+    cout << "\n\nWciśnij ENTER aby zamknąć...";
+    getchar();
+
+    return 0;
+}
